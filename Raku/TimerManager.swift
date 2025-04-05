@@ -9,13 +9,13 @@ enum TimerMode {
 }
 
 class TimerManager: ObservableObject {
-    @Published var timeRemaining: Int = 10
+    @Published var timeRemaining: Int = 20 * 60
     @Published var isRunning: Bool = false
     @Published var currentMode: TimerMode = .focus
     
     // Session durations
     private var focusDuration: Int = 20 * 60
-    private var shortBreakDuration: Int = 5 * 60
+    private var shortBreakDuration: Int = 30
     private var longBreakDuration: Int = 15 * 60
     
     // Session tracking
@@ -28,9 +28,11 @@ class TimerManager: ObservableObject {
     private var lastActivityTime: Date = Date()
     private var wasAutoPaused: Bool = false
     
-    var onTimerUpdate: ((String) -> Void)?
+    // Modify the callback type to include both text and whether to show icon
+    var onTimerUpdate: ((String, Bool) -> Void)?
     var onTimerComplete: (() -> Void)?
     var onBreakStart: (() -> Void)?
+    var onTimerAboutToEnd: (() -> Void)?  // Add this new property
 
     init() {
         updateTimerDisplay()
@@ -93,6 +95,11 @@ class TimerManager: ObservableObject {
             guard let self = self else { return }
             
             if self.timeRemaining > 0 {
+                // Check if we're in the last 59 seconds of a focus session
+                if self.currentMode == .focus && self.timeRemaining == 59 {
+                    self.onTimerAboutToEnd?()
+                }
+                
                 self.timeRemaining -= 1
                 self.updateTimerDisplay()
             } else {
@@ -102,9 +109,7 @@ class TimerManager: ObservableObject {
         }
     }
     
-    private func completeCurrentSession() {
-        pauseTimer()
-        
+    func completeCurrentSession() {
         switch currentMode {
         case .focus:
             // When focus session completes
@@ -117,10 +122,12 @@ class TimerManager: ObservableObject {
             } else {
                 switchToMode(.shortBreak)
             }
+            startTimer() // Start break timer automatically
             
         case .shortBreak, .longBreak:
             // After a break, go back to focus mode
             switchToMode(.focus)
+            startTimer()
         }
     }
     
@@ -133,8 +140,10 @@ class TimerManager: ObservableObject {
             timeRemaining = focusDuration
         case .shortBreak:
             timeRemaining = shortBreakDuration
+            onTimerAboutToEnd?() // Show notification at start of break
         case .longBreak:
             timeRemaining = longBreakDuration
+            onTimerAboutToEnd?() // Show notification at start of break
         }
         
         updateTimerDisplay()
@@ -193,7 +202,7 @@ class TimerManager: ObservableObject {
         }
         
         timeString = modePrefix + timeString
-        onTimerUpdate?(timeString)
+        onTimerUpdate?(timeString, true)  // Added boolean parameter for showing icon
     }
     
     func setCustomTime(minutes: Int) {
@@ -228,6 +237,12 @@ class TimerManager: ObservableObject {
     
     func setSessionsUntilLongBreak(sessions: Int) {
         sessionsUntilLongBreak = max(1, sessions)
+    }
+    
+    // Add this method to the TimerManager class
+    func addTime(minutes: Int) {
+        timeRemaining += minutes * 60
+        updateTimerDisplay()
     }
 }
 

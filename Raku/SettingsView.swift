@@ -10,9 +10,6 @@ struct SettingsView: View {
     
     var body: some View {
         VStack(spacing: 20) {
-            Text("Raku Settings")
-                .font(.headline)
-            
             ScrollView {
                 VStack(alignment: .leading, spacing: 15) {
                     // Focus duration

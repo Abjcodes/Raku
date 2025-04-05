@@ -16,9 +16,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self.timerManager.startTimer()
         }
         
+        // Subscribe to timer about to end (last 10 seconds)
+        timerManager.onTimerAboutToEnd = { [weak self] in
+            self?.showOverlayNotification()
+        }
+        
         // Subscribe to timer completion
         timerManager.onTimerComplete = { [weak self] in
-            self?.showOverlayNotification()
+            if let window = self?.overlayWindow, window.isVisible {
+                // If notification is still showing, do nothing
+            } else {
+                // If notification is not showing, start the break
+                self?.timerManager.startTimer()
+            }
         }
     }
     
@@ -42,29 +52,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         
         // Timer controls - dynamically show based on timer state and mode
         if timerManager.isRunning {
-            // Timer is running - show Pause option
             menu.addItem(NSMenuItem(title: "Pause Timer", action: #selector(pauseTimer), keyEquivalent: "p"))
         } else {
-            // Timer is paused - show Resume option
             menu.addItem(NSMenuItem(title: "Resume Timer", action: #selector(startTimer), keyEquivalent: "s"))
         }
         
-        // Always show Reset option
         menu.addItem(NSMenuItem(title: "Reset Timer", action: #selector(resetTimer), keyEquivalent: "r"))
         
-        // Add Skip Break option if in break mode
         if timerManager.currentMode != .focus {
             menu.addItem(NSMenuItem(title: "Skip Break", action: #selector(skipBreak), keyEquivalent: "k"))
         }
         
         menu.addItem(NSMenuItem.separator())
-        
-        // Settings
         menu.addItem(NSMenuItem(title: "Settings", action: #selector(openSettings), keyEquivalent: ","))
-        
         menu.addItem(NSMenuItem.separator())
-        
-        // Quit
         menu.addItem(NSMenuItem(title: "Quit", action: #selector(quitApp), keyEquivalent: "q"))
         
         statusItem?.menu = menu
@@ -72,21 +73,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     
     @objc func startTimer() {
         timerManager.startTimer()
-        setupMenu() // Update menu after starting timer
+        setupMenu()
     }
     
     @objc func pauseTimer() {
         timerManager.pauseTimer()
-        setupMenu() // Update menu after pausing timer
+        setupMenu()
     }
     
     @objc func resetTimer() {
         timerManager.resetTimer()
-        setupMenu() // Update menu after resetting timer
+        setupMenu()
     }
     
     @objc func openSettings() {
-        // Create window controller if none exists
         if settingsWindowController == nil {
             let settingsWindow = NSWindow(
                 contentRect: NSRect(x: 0, y: 0, width: 300, height: 200),
@@ -101,7 +101,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             settingsWindow.delegate = self
         }
         
-        // Show window
         settingsWindowController?.showWindow(nil)
         settingsWindowController?.window?.center()
         NSApp.activate(ignoringOtherApps: true)
@@ -112,12 +111,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
     
     func updateMenuBarTitle() {
-        // Subscribe to timer updates
-        timerManager.onTimerUpdate = { [weak self] remainingTime in
+        timerManager.onTimerUpdate = { [weak self] remainingTime, showIcon in
             DispatchQueue.main.async {
                 if let button = self?.statusItem?.button {
-                    button.title = remainingTime
-                    self?.setupMenu() // Update menu on timer updates
+                    if showIcon {
+                        let icon = NSImage(named: "RakuMenuIcon")
+                        icon?.size = NSSize(width: 16, height: 14)
+                        button.image = icon
+                        button.imagePosition = .imageLeft
+                        button.title = " " + remainingTime
+                    } else {
+                        button.image = nil
+                        button.title = remainingTime
+                    }
+                    self?.setupMenu()
                 }
             }
         }
@@ -125,7 +132,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     
     func showOverlayNotification() {
         let screenSize = NSScreen.main?.frame.size ?? CGSize(width: 800, height: 600)
-        let overlaySize = CGSize(width: 300, height: 120)
+        let overlaySize = CGSize(width: 420, height: 180)
         let overlayOrigin = CGPoint(x: (screenSize.width - overlaySize.width) / 2, y: screenSize.height - overlaySize.height - 50)
         
         overlayWindow = NSWindow(
@@ -138,85 +145,32 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         overlayWindow?.backgroundColor = NSColor.clear
         overlayWindow?.level = .floating
         overlayWindow?.hasShadow = false
-        overlayWindow?.contentView = NSHostingView(rootView: OverlayView())
         
+        let isBreakMode = timerManager.currentMode != .focus
+        let breakDuration = Double(timerManager.timeRemaining)
+        
+        let overlayView = NotificationManagerView(
+            onDismiss: { [weak self] in
+                self?.dismissNotification()
+            },
+            onAddOneMinute: { [weak self] in
+                self?.timerManager.addTime(minutes: 1)
+            },
+            onAddFiveMinutes: { [weak self] in
+                self?.addFiveMinutes()
+            },
+            onStartBreakTimer: { [weak self] in
+                // Dismiss current notification and immediately show break notification
+                self?.dismissNotification()
+                self?.timerManager.completeCurrentSession()
+                self?.showOverlayNotification() // Add this line
+            },
+            isBreakMode: isBreakMode,
+            breakDuration: breakDuration
+        )
+        
+        overlayWindow?.contentView = NSHostingView(rootView: overlayView)
         overlayWindow?.makeKeyAndOrderFront(nil)
-        
-        // Wait for 10.3 seconds (10s for timer + 0.3s for exit animation)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 10.3) { [weak self] in
-            self?.overlayWindow?.orderOut(nil)
-            self?.overlayWindow = nil
-            
-            // Start the break timer instead of resetting
-            // The break mode has already been set in TimerManager.completeCurrentSession()
-            self?.timerManager.startTimer()
-        }
-    }
-}
-
-struct OverlayView: View {
-    @State var yOffset: CGFloat = -150
-    @State private var timeRemaining: Double = 10.0 // Changed from 3.0 to 10.0
-    @State private var isTimerRunning = true
-    
-    var body: some View {
-        VStack {
-            Text("Session Complete!")
-                .font(.headline)
-                .padding(.top)
-            
-            Text("Take a break and relax.")
-                .font(.subheadline)
-                .padding(.bottom, 5)
-            
-            ZStack {
-                // Background circle
-                Circle()
-                    .stroke(Color.gray.opacity(0.3), lineWidth: 4)
-                    .frame(width: 40, height: 40)
-                
-                // Progress circle
-                Circle()
-                    .trim(from: 0, to: CGFloat(timeRemaining / 10.0)) // Changed from 3.0 to 10.0
-                    .stroke(Color.white, style: StrokeStyle(lineWidth: 4, lineCap: .round))
-                    .frame(width: 40, height: 40)
-                    .rotationEffect(.degrees(-90))
-                
-                // Timer text
-                Text("\(Int(timeRemaining))")
-                    .font(.system(size: 14, weight: .bold))
-            }
-            .padding(.bottom, 10)
-        }
-        .frame(width: 300, height: 120)
-        .background(Color.black.opacity(0.8))
-        .cornerRadius(10)
-        .foregroundColor(.white)
-        .offset(y: yOffset)
-        .onAppear {
-            withAnimation(.spring(response: 0.5, dampingFraction: 0.6)) {
-                yOffset = 0
-            }
-            
-            // Start countdown timer
-            startTimer()
-        }
-    }
-    
-    private func startTimer() {
-        let timer = Timer.scheduledTimer(withTimeInterval: 0.01, repeats: true) { timer in
-            if timeRemaining > 0.01 {
-                timeRemaining -= 0.01
-            } else {
-                timer.invalidate()
-                isTimerRunning = false
-                // Animate out when timer completes
-                withAnimation(.easeIn(duration: 0.3)) {
-                    yOffset = -150
-                }
-            }
-        }
-        RunLoop.current.add(timer, forMode: .common)
     }
 }
 
@@ -238,6 +192,25 @@ extension AppDelegate: NSWindowDelegate {
     
     @objc func skipBreak() {
         timerManager.skipBreak()
-        setupMenu() // Update menu after skipping break
+        setupMenu()
+    }
+}
+
+extension AppDelegate {
+    @objc func dismissNotification() {
+        overlayWindow?.orderOut(nil)
+        overlayWindow = nil
+        
+        if timerManager.timeRemaining == 0 {
+            timerManager.startTimer()
+        }
+    }
+    
+    @objc func addOneMinute() {
+        timerManager.addTime(minutes: 1)
+    }
+    
+    @objc func addFiveMinutes() {
+        timerManager.addTime(minutes: 5)
     }
 }
