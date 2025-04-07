@@ -1,10 +1,3 @@
-//
-//  ContentView.swift
-//  Raku
-//
-//  Created by Abijith Vasanthakumar on 03/04/25.
-//
-
 import SwiftUI
 
 struct ContentView: View {

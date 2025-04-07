@@ -12,6 +12,14 @@ struct SettingsView: View {
         VStack(spacing: 20) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 15) {
+                    HStack {
+                        Spacer()
+                        Image("RakuIcon")
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 40, height: 40)
+                        Spacer()
+                    }
                     // Focus duration
                     VStack(alignment: .leading) {
                         Text("Focus Duration: \(Int(focusDuration)) minutes")
@@ -50,19 +58,8 @@ struct SettingsView: View {
                 }
             }
             .padding()
-            
-            Button("Close") {
-                // Use NSApp.windows instead and close window more safely
-                for window in NSApp.windows {
-                    if window.isVisible && window.contentView is NSHostingView<SettingsView> {
-                        window.orderOut(nil)
-                        return
-                    }
-                }
-            }
-            .keyboardShortcut(.defaultAction)
         }
-        .frame(width: 300, height: 300)
+        .frame(width: 300, height: 320)
         .padding()
         .onAppear {
             // Initialize the sliders with the current timer values

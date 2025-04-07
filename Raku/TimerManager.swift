@@ -15,7 +15,7 @@ class TimerManager: ObservableObject {
     
     // Session durations
     private var focusDuration: Int = 20 * 60
-    private var shortBreakDuration: Int = 30
+    private var shortBreakDuration: Int = 4 * 60
     private var longBreakDuration: Int = 15 * 60
     
     // Session tracking
@@ -46,7 +46,21 @@ class TimerManager: ObservableObject {
             self?.checkForInactivity()
         }
         
-        // Register for workspace notifications to detect user activity
+        // Register for workspace notifications to detect user activity and system events
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self,
+            selector: #selector(userDidBecomeInactive),
+            name: NSWorkspace.willSleepNotification,
+            object: nil
+        )
+        
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self,
+            selector: #selector(userDidBecomeInactive),
+            name: NSWorkspace.screensDidSleepNotification,
+            object: nil
+        )
+        
         NSWorkspace.shared.notificationCenter.addObserver(
             self,
             selector: #selector(userDidBecomeActive),
@@ -54,9 +68,16 @@ class TimerManager: ObservableObject {
             object: nil
         )
         
-        // Also monitor mouse and keyboard activity
+        // Monitor mouse and keyboard activity
         NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved, .leftMouseDown, .rightMouseDown, .keyDown]) { [weak self] _ in
             self?.userDidBecomeActive()
+        }
+    }
+    
+    @objc private func userDidBecomeInactive() {
+        if isRunning {
+            wasAutoPaused = true
+            pauseTimer()
         }
     }
     
@@ -95,7 +116,7 @@ class TimerManager: ObservableObject {
             guard let self = self else { return }
             
             if self.timeRemaining > 0 {
-                // Check if we're in the last 59 seconds of a focus session
+                // Only trigger onTimerAboutToEnd for focus mode
                 if self.currentMode == .focus && self.timeRemaining == 59 {
                     self.onTimerAboutToEnd?()
                 }
@@ -140,10 +161,10 @@ class TimerManager: ObservableObject {
             timeRemaining = focusDuration
         case .shortBreak:
             timeRemaining = shortBreakDuration
-            onTimerAboutToEnd?() // Show notification at start of break
+            onBreakStart?()  // Keep only onBreakStart for break modes
         case .longBreak:
             timeRemaining = longBreakDuration
-            onTimerAboutToEnd?() // Show notification at start of break
+            onBreakStart?()  // Keep only onBreakStart for break modes
         }
         
         updateTimerDisplay()

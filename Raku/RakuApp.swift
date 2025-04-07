@@ -16,6 +16,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self.timerManager.startTimer()
         }
         
+        // Subscribe to break start
+        timerManager.onBreakStart = { [weak self] in
+            self?.showOverlayNotification()
+        }
+        
         // Subscribe to timer about to end (last 10 seconds)
         timerManager.onTimerAboutToEnd = { [weak self] in
             self?.showOverlayNotification()
@@ -34,19 +39,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     
     func setupMenuBar() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        
-        if let button = statusItem?.button {
-            button.title = "20m"
-            button.action = #selector(togglePopover)
-        }
-        
-        setupMenu()
+        setupMenu()  // Just call setupMenu directly
     }
     
-    @objc func togglePopover() {
-        setupMenu()
-    }
-    
+    // Remove togglePopover since it's just a wrapper
     func setupMenu() {
         let menu = NSMenu()
         
@@ -116,7 +112,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 if let button = self?.statusItem?.button {
                     if showIcon {
                         let icon = NSImage(named: "RakuMenuIcon")
-                        icon?.size = NSSize(width: 16, height: 14)
+                        icon?.size = NSSize(width: 18, height: 14)
                         button.image = icon
                         button.imagePosition = .imageLeft
                         button.title = " " + remainingTime
